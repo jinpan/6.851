@@ -99,7 +99,7 @@ func (ht *SimpleHashTable) delete(key uint) *string {
     Deletes the pointer to the value matching the key from the hash table.
 */
 func (ht2 *SimpleHashTable2) delete(key uint) *string {
-    llist := ht2.data[(key * ht2.p) % ht.m]
+    llist := ht2.data[(key * ht2.p) % ht2.m]
     for e := llist.Front(); e != nil; e = e.Next() {
         if e.Value.(Datum).key == key {
             result := llist.Remove(e).(Datum).val

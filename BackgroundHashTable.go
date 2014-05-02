@@ -2,8 +2,8 @@ package main
 
 import (
     "container/list"
-    "fmt"
-    "time"
+    "math"
+    "sync"
 )
 
 type BackgroundHashTable struct {
@@ -17,6 +17,8 @@ type BackgroundHashTable2 struct {
     n uint  // total size
     p uint  // prime number
     m uint  // secondary table size
+    accessed chan bool  // accessed boolean
+    lock sync.Mutex  // lock
     data []*list.List  // actual data
 }
 
@@ -33,6 +35,8 @@ func makeBackgroundHashTable(m uint) *BackgroundHashTable {
             n: 0,
             p: getPrime(100 * m, 200 * m),
             m: m,
+            accessed: make(chan bool),
+            lock: sync.Mutex{},
             data: make([]*list.List, m),
         }
 
@@ -45,25 +49,43 @@ func makeBackgroundHashTable(m uint) *BackgroundHashTable {
 }
 
 func cleanup(ht2 *BackgroundHashTable2) {
-    expected_length := float64(ht2.n) / float64(ht2.m)
     for {
-        // calculate potential
-        potential := 0.
-        for _, datum := range ht2.data {
-            if float64(datum.Len()) > expected_length {
-                potential += float64(datum.Len()) - expected_length
-            }
-        }
-        fmt.Println(potential)
+        <-ht2.accessed
 
-        if potential > 10 {  // TODO: make a better threshold
-            // do something to reduce potential
-        } else {
-            // chill
-            time.Sleep(1000)
+        // TODO: optimize this
+        for {
+            potential := ht2.calcPotential()
+            if potential < 10 {  // TODO: Make a better threshold
+                break
+            }
+            // otherwise, try to reduce potential
+            ht2.lock.Lock()
+
+            p := getPrime(100 * ht2.m, 200 * ht2.m)
+            data := make([]*list.List, ht2.m)
+            for j:= uint(0); j < ht2.m; j++ {
+                data[j] = list.New()
+            }
+            for j:= uint(0); j < ht2.m; j++ {
+                for e := ht2.data[j].Front(); e != nil; e = e.Next() {
+                    datum := e.Value.(Datum)
+                    ht2.data[(datum.key * p) % ht2.m].PushBack(datum)
+                }
+            }
+            ht2.data = data
+            ht2.lock.Unlock()
         }
     }
+}
 
+func (ht2 *BackgroundHashTable2) calcPotential() float64 {
+    expected_length := float64(ht2.n) / float64(ht2.m)
+    potential := 0.0
+    for _, datum := range ht2.data {
+        potential += math.Max(0.0, float64(datum.Len()) - expected_length)
+    }
+
+    return potential
 }
 
 /*
@@ -82,6 +104,7 @@ func (ht *BackgroundHashTable) insert(key uint, val string) {
 func (ht2 *BackgroundHashTable2) insert(key uint, val string) {
     llist := ht2.data[(key * ht2.p) % ht2.m]
     llist.PushBack(Datum{key: key, val: val})
+    ht2.accessed <- true
 }
 
 /*
@@ -117,11 +140,12 @@ func (ht *BackgroundHashTable) delete(key uint) *string {
 /*
     Deletes the pointer to the value matching the key from the hash table.
 */
-func (ht *BackgroundHashTable2) delete(key uint) *string {
-    llist := ht.data[(key * ht.p) % ht.m]
+func (ht2 *BackgroundHashTable2) delete(key uint) *string {
+    llist := ht2.data[(key * ht2.p) % ht2.m]
     for e := llist.Front(); e != nil; e = e.Next() {
         if e.Value.(Datum).key == key {
             result := llist.Remove(e).(Datum).val
+            ht2.accessed <- true
             return &result
         }
     }
