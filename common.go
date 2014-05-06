@@ -39,3 +39,25 @@ func getPrime(lower uint, upper uint) uint {
     return getPrime(lower, upper)
 }
 
+/*
+    Returns whether a and b are relatively prime.  Assumes a < b
+*/
+func isRPrime(a, b uint) bool {
+    if a == 0 {
+        return false
+    }
+    if a == 1 {
+        return true
+    }
+    return isRPrime(b%a, a)
+}
+
+
+func getRPrime(n uint) uint {
+    for {
+        guess := uint(rand.Intn(int(n)-3) + 2)
+        if isRPrime(guess, n) {
+            return guess
+        }
+    }
+}
