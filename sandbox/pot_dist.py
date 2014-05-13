@@ -1,9 +1,8 @@
 """
-Empirically calculate the potential distribution for
-different load factors.  This code will likely be released
-under the MIT license so we're okay with this being used for
-pot distribution, but not okay with us getting sued for pot
-distribution use.
+Empirically calculate the potential distribution for different load
+factors.  This code will likely be released under the MIT license so
+we're pretty okay with this being used for pot distribution, but less
+okay with getting sued over pot distribution use.
 """
 from random import randint
 from scipy.stats import linregress
