@@ -6,7 +6,7 @@ import (
 )
 
 type Datum struct {
-    key uint
+    key int
     val string
 }
 
@@ -14,8 +14,8 @@ type Datum struct {
     Simple primality checking function.  Checks to see if any of the integers
     from 2 to sqrt(n) divide n.
 */
-func isPrime(n uint) bool {
-    for i := uint(2); i <= uint(math.Sqrt(float64(n))); i++ {
+func isPrime(n int) bool {
+    for i := int(2); i <= int(math.Sqrt(float64(n))); i++ {
         if n % i == 0 {
             return false
         }
@@ -30,8 +30,8 @@ func isPrime(n uint) bool {
     numbers until it gets a prime.  If it gets to the upper bound first,
     it tries again with a different starting point.
 */
-func getPrime(lower uint, upper uint) uint {
-    for start := lower + uint(rand.Intn(int(upper - lower))); start < upper; start++ {
+func getPrime(lower int, upper int) int {
+    for start := lower + int(rand.Intn(int(upper - lower))); start < upper; start++ {
         if isPrime(start) {
             return start
         }
@@ -42,7 +42,7 @@ func getPrime(lower uint, upper uint) uint {
 /*
     Returns whether a and b are relatively prime.  Assumes a < b
 */
-func isRPrime(a, b uint) bool {
+func isRPrime(a, b int) bool {
     if a == 0 {
         return false
     }
@@ -53,9 +53,9 @@ func isRPrime(a, b uint) bool {
 }
 
 
-func getRPrime(n uint) uint {
+func getRPrime(n int) int {
     for {
-        guess := uint(rand.Intn(int(n)-3) + 2)
+        guess := int(rand.Intn(int(n)-3) + 2)
         if isRPrime(guess, n) {
             return guess
         }

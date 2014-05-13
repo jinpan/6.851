@@ -12,7 +12,7 @@ import numpy as np
 def generate_simple(n):
     with open('tests/simple.csv', 'w') as f:
         for _ in xrange(n):
-            key = randint(0, 1000)
+            key = randint(0, 32000000)
             val = sha1(str(key)).hexdigest()
             f.write('%d, %s%f\n' % (key, val, random()))
 
@@ -28,6 +28,6 @@ def generate_poisson(n, lam=1.):
 
 
 if __name__ == '__main__':
-    generate_simple(10 ** 3)
+    generate_simple(10 ** 6)
     # generate_poisson(10**6, 25.)
 

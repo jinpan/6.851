@@ -2,41 +2,47 @@ package main
 
 import (
     "container/list"
-    "math"
     "fmt"
+    "math/rand"
 )
 
 type SimpleHashTable struct {
-    n uint  // total size
-    p uint  // prime number
-    m uint  // primary table size
+    n int  // total size
+    p int  // prime number
+    a int  // coefficient of the hash function
+    m int  // primary table size
     data []*SimpleHashTable2  // array of secondary tables
 }
 
 type SimpleHashTable2 struct {
-    n uint  // total size
-    p uint  // prime number
-    m uint  // secondary table size
+    n int  // total size
+    p int  // prime number
+    a int  // coefficient of the hash function
+    m int  // secondary table size
     data []*list.List  // actual data
 }
 
-func makeSimpleHashTable(m uint) *SimpleHashTable {
+func makeSimpleHashTable(m int) *SimpleHashTable {
+    p := getPrime(u, 2*u)
     ht := SimpleHashTable {
         n: 0,
-        p: getRPrime(m),
+        p: p,
+        a: rand.Intn(p),
         m: m,
         data: make([]*SimpleHashTable2, m),
     }
 
-    for i := uint(0); i < m; i++ {
+    for i := 0; i < m; i++ {
+        p = getPrime(u, 2*u)
         ht.data[i] = &SimpleHashTable2{
             n: 0,
-            p: getRPrime(m),
+            p: p,
+            a: rand.Intn(p),
             m: m,
             data: make([]*list.List, m),
         }
 
-        for j := uint(0); j < m; j++ {
+        for j := 0; j < m; j++ {
             ht.data[i].data[j] = list.New()
         }
     }
@@ -44,25 +50,42 @@ func makeSimpleHashTable(m uint) *SimpleHashTable {
 }
 
 /*
+    Hash the key with the params in the table
+*/
+func (ht *SimpleHashTable) hash(key int) int {
+    return ((ht.a * key) % ht.p) % ht.m
+}
+
+/*
+    Hash the key with the params in the table
+*/
+func (ht2 *SimpleHashTable2) hash(key int) int {
+    return ((ht2.a * key) % ht2.p) % ht2.m
+}
+
+/*
     Inserts the key/val pair into the hash table.  Gets the appropriate bucket
     and inserts the k/v pair into the bucket
 */
-func (ht *SimpleHashTable) insert(key uint, val string) {
-    bucket := ht.data[(key * ht.p) % ht.m]
-    bucket.insert(key, val)
-    ht.n += 1
+func (ht *SimpleHashTable) insert(key int, val string) {
+    datum := Datum{key: key, val: val}
 
-    ht.rebalance()
+    ht.data[ht.hash(key)].insert(datum)
+    ht.double()
+    ht.n++
 }
 
 /*
     Inserts the key/val pair into the hash table.  Gets the appropriate bucket
     and inserts the k/v pair into the bucket as a Datum object
 */
-func (ht2 *SimpleHashTable2) insert(key uint, val string) {
-    llist := ht2.data[(key * ht2.p) % ht2.m]
+func (ht2 *SimpleHashTable2) insert(datum Datum) {
+    key := datum.key
+    val := datum.val
+
+    llist := ht2.data[ht2.hash(key)]
     llist.PushBack(Datum{key: key, val: val})
-    ht2.n += 1
+    ht2.n++
 
     ht2.rebalance()
 }
@@ -70,16 +93,16 @@ func (ht2 *SimpleHashTable2) insert(key uint, val string) {
 /*
     Retrieves the pointer to the value matching the key from the hash table.
 */
-func (ht *SimpleHashTable) get(key uint) *string {
-    bucket := ht.data[(key * ht.p) % ht.m]
+func (ht *SimpleHashTable) get(key int) *string {
+    bucket := ht.data[ht.hash(key)]
     return bucket.get(key)
 }
 
 /*
     Retrieves the pointer to the value matching the key from the hash table.
 */
-func (ht2 *SimpleHashTable2) get(key uint) *string {
-    llist := ht2.data[(key * ht2.p) % ht2.m]
+func (ht2 *SimpleHashTable2) get(key int) *string {
+    llist := ht2.data[ht2.hash(key)]
     for e := llist.Front(); e != nil; e = e.Next() {
         if e.Value.(Datum).key == key {
             result := e.Value.(Datum).val
@@ -92,47 +115,30 @@ func (ht2 *SimpleHashTable2) get(key uint) *string {
 /*
     Deletes the pointer to the value matching the key from the hash table.
 */
-func (ht *SimpleHashTable) delete(key uint) *string {
-    bucket := ht.data[(key * ht.p) % ht.m]
-    result := bucket.delete(key)
+func (ht *SimpleHashTable) del(key int) *string {
+    bucket := ht.data[ht.hash(key)]
+    result := bucket.del(key)
     if result != nil {
-        ht.n -= 1
+        ht.n--
     }
-
-    ht.rebalance()
     return result
 }
 
 /*
     Deletes the pointer to the value matching the key from the hash table.
 */
-func (ht2 *SimpleHashTable2) delete(key uint) *string {
-    llist := ht2.data[(key * ht2.p) % ht2.m]
+func (ht2 *SimpleHashTable2) del(key int) *string {
+    llist := ht2.data[ht2.hash(key)]
     for e := llist.Front(); e != nil; e = e.Next() {
         if e.Value.(Datum).key == key {
             result := llist.Remove(e).(Datum).val
-            ht2.n -= 1
+            ht2.n--
 
             ht2.rebalance()
             return &result
         }
     }
-    ht2.rebalance()
     return nil
-}
-
-/*
-    Compute the potential
-*/
-func (ht SimpleHashTable) calcPotential() float64 {
-    potential := 0.0
-    expected_length := float64(ht.n) / float64(ht.m)
-    for _, datum := range ht.data {
-        if float64(datum.n) > expected_length + 1.0 {
-            potential += float64(datum.n) - (expected_length + 1.0)
-        }
-    }
-    return potential
 }
 
 /*
@@ -141,56 +147,70 @@ func (ht SimpleHashTable) calcPotential() float64 {
 func (ht2 SimpleHashTable2) calcPotential() float64 {
     potential := 0.0
     expected_length := float64(ht2.n) / float64(ht2.m)
+    cutoff := expected_length + 1.0
     for _, datum := range ht2.data {
-        potential += math.Max(0.0, float64(datum.Len()) - math.Ceil(expected_length))
+        if float64(datum.Len()) > cutoff {
+            potential += float64(datum.Len()) - cutoff
+        }
     }
     return potential
 }
 
 /*
-    Considers rebalancing the hash table and rebalance if necessary
+    Doubles the size of the hash table
 */
-func (ht *SimpleHashTable) rebalance() {
-    for ; ht.calcPotential() > 100; {
-        fmt.Println("rebalancing first level", ht.calcPotential(), ht.n)
-        data := make([]uint, ht.m)
-        for i, datum := range ht.data {
-            data[i] = datum.n
+func (ht *SimpleHashTable) double() {
+    if ht.n > ht.m * ht.m {
+        ht.m *= 2
+        new_data := make([]*SimpleHashTable2, ht.m)
+        for i := 0; i < ht.m; i++ {
+            p := getPrime(u, 2*u)
+            new_data[i] = &SimpleHashTable2{
+                n: 0,
+                p: p,
+                a: rand.Intn(p),
+                m: ht.m,
+                data: make([]*list.List, ht.m),
+            }
+            for j := 0; j < ht.m; j++ {
+                new_data[i].data[j] = list.New()
+            }
         }
-        fmt.Println(data)
-        new_ht := makeSimpleHashTable(ht.m)
-        for i := uint(0); i < ht.m; i++ {
-            for j := uint(0); j < ht.data[i].m; j++ {
+
+        for i := 0; i < ht.m; i++ {
+            for j := 0; j < ht.data[i].m; j++ {
                 llist := ht.data[i].data[j]
                 for e := llist.Front(); e != nil; e = e.Next() {
                     datum := e.Value.(Datum)
-                    new_ht.insert(datum.key, datum.val)
+                    new_data[ht.hash(datum.key)].insert(datum)
                 }
             }
         }
-        ht = new_ht
+        ht.data = new_data
     }
 }
-
 
 /*
     Considers rebalancing the hash table and rebalance if necessary
 */
 func (ht2 *SimpleHashTable2) rebalance() {
-    for ; ht2.calcPotential() > 10; {
+    for ; ht2.calcPotential() > 19.143 + 0.104 * float64(ht2.n); {
         fmt.Println("rebalancing second level")
-        p := getRPrime(ht2.m)
+        fmt.Println(ht2.a, ht2.p, ht2.m, ht2.n, ht2.calcPotential())
+
+        ht2.p = getPrime(u, 2*u)
+        ht2.a = rand.Intn(ht2.p)
         data := make([]*list.List, ht2.m)
-        for j := uint(0); j < ht2.m; j++ {
+        for j := 0; j < ht2.m; j++ {
             data[j] = list.New()
         }
-        for j := uint(0); j < ht2.m; j++ {
+        for j := 0; j < ht2.m; j++ {
             for e := ht2.data[j].Front(); e != nil; e = e.Next() {
                 datum := e.Value.(Datum)
-                data[(datum.key * p) % ht2.m].PushBack(datum)
+                data[ht2.hash(datum.key)].PushBack(datum)
             }
         }
-        ht2.p = p
         ht2.data = data
     }
 }
+
