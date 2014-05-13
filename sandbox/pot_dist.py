@@ -25,7 +25,8 @@ def compute_potential(data, n):
 def get_potential(alpha):
 
     num_elements = int(alpha * TABLE_SIZE)
-    counts = [0 for _ in xrange(TABLE_SIZE)]
+    counts = [0] * TABLE_SIZE
+
     for _ in xrange(num_elements):
         counts[randint(0, TABLE_SIZE-1)] += 1
     return compute_potential(counts, num_elements)
@@ -35,7 +36,7 @@ if __name__ == '__main__':
 
     alphas = []
     moments = [[], [], [], []]
-    for alpha in [num/10. for num in range(1, 51)]:
+    for alpha in (num/10. for num in xrange(1, 51)):
         potentials = [get_potential(alpha) for _ in range(100)]
 
         print alpha
