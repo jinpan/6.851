@@ -12,6 +12,8 @@ type BackgroundHashTable struct {
     p int  // prime number
     a int  // coefficient of the hash function
     m int  // primary table size
+    changed chan bool  // changed boolean
+    lock sync.Mutex  // lock
     data []*BackgroundHashTable2  // array of secondary tables
 }
 
@@ -32,6 +34,8 @@ func makeBackgroundHashTable(m int) *BackgroundHashTable {
         p: p,
         a: rand.Intn(p),
         m: m,
+        changed: make(chan bool, 10),
+        lock: sync.Mutex{},
         data : make([]*BackgroundHashTable2, m),
     }
 
@@ -42,7 +46,7 @@ func makeBackgroundHashTable(m int) *BackgroundHashTable {
             p: p,
             a: rand.Intn(p),
             m: m,
-            changed: make(chan bool),
+            changed: make(chan bool, 10),
             lock: sync.Mutex{},
             data: make([]*list.List, m),
         }
@@ -50,8 +54,9 @@ func makeBackgroundHashTable(m int) *BackgroundHashTable {
         for j := 0; j < m; j++ {
             ht.data[i].data[j] = list.New()
         }
-        go cleanup(ht.data[i])
+        go ht.data[i].cleanup()
     }
+    go ht.cleanup()
     return &ht
 }
 
@@ -76,8 +81,14 @@ func (ht2 *BackgroundHashTable2) hash(key int) int {
 func (ht *BackgroundHashTable) insert(key int, val string) {
     datum := Datum{key: key, val: val}
 
+    ht.lock.Lock()
+
     ht.data[ht.hash(key)].insert(datum)
     ht.n++
+
+    ht.lock.Unlock()
+
+    ht.changed <- true
 }
 
 /*
@@ -88,9 +99,12 @@ func (ht2 *BackgroundHashTable2) insert(datum Datum) {
     key := datum.key
     val := datum.val
 
+    ht2.lock.Lock()
     llist := ht2.data[ht2.hash(key)]
     llist.PushBack(Datum{key: key, val: val})
+
     ht2.n++
+    ht2.lock.Unlock()
 
     ht2.changed <- true
 }
@@ -99,14 +113,23 @@ func (ht2 *BackgroundHashTable2) insert(datum Datum) {
     Retrieves the pointer to the value matching the key from the hash table.
 */
 func (ht *BackgroundHashTable) get(key int) *string {
+
+    ht.lock.Lock()
+
     bucket := ht.data[(key * ht.p) % ht.m]
-    return bucket.get(key)
+    result := bucket.get(key)
+
+    ht.lock.Unlock()
+    return result
 }
 
 /*
     Retrieves the pointer to the value matching the key from the hash table.
 */
 func (ht2 *BackgroundHashTable2) get(key int) *string {
+    ht2.lock.Lock()
+    defer ht2.lock.Unlock()
+
     llist := ht2.data[(key * ht2.p) % ht2.m]
     for e := llist.Front(); e != nil; e = e.Next() {
         if e.Value.(Datum).key == key {
@@ -121,11 +144,16 @@ func (ht2 *BackgroundHashTable2) get(key int) *string {
     Deletes the pointer to the value matching the key from the hash table.
 */
 func (ht *BackgroundHashTable) del(key int) *string {
+    ht.lock.Lock()
+
     bucket := ht.data[(key * ht.p) % ht.m]
     result := bucket.del(key)
     if result != nil {
         ht.n--
     }
+
+    ht.lock.Unlock()
+    ht.changed <- true
     return result
 }
 
@@ -133,6 +161,9 @@ func (ht *BackgroundHashTable) del(key int) *string {
     Deletes the pointer to the value matching the key from the hash table.
 */
 func (ht2 *BackgroundHashTable2) del(key int) *string {
+    ht2.lock.Lock()
+    defer ht2.lock.Unlock()
+
     llist := ht2.data[(key * ht2.p) % ht2.m]
     for e := llist.Front(); e != nil; e = e.Next() {
         if e.Value.(Datum).key == key {
@@ -144,6 +175,55 @@ func (ht2 *BackgroundHashTable2) del(key int) *string {
         }
     }
     return nil
+}
+
+
+func (ht *BackgroundHashTable) cleanup() {
+    for {
+        if !<-ht.changed {
+            return
+        }
+        if ht.n <= ht.m * ht.m {
+            continue
+        }
+
+        fmt.Println("doubling")
+
+        new_m := 2 * ht.m
+        new_data := make([]*BackgroundHashTable2, new_m)
+        for i := 0; i < new_m; i++ {
+            p := getPrime(u, 2*u)
+            new_data[i] = &BackgroundHashTable2{
+                n: 0,
+                p: p,
+                a: rand.Intn(p),
+                m: new_m,
+                changed: make(chan bool, 10),
+                lock: sync.Mutex{},
+                data: make([]*list.List, new_m),
+            }
+            for j := 0; j < new_m; j++ {
+                new_data[i].data[j] = list.New()
+            }
+            go new_data[i].cleanup()
+        }
+
+        ht.lock.Lock()
+        ht.m = new_m
+        for i := 0; i < ht.m/2; i++ {  // /2 because old m
+            ht.data[i].changed <- false
+            for j := 0; j < ht.data[i].m; j++ {
+                llist := ht.data[i].data[j]
+                for e := llist.Front(); e != nil; e = e.Next() {
+                    datum := e.Value.(Datum)
+                    new_data[ht.hash(datum.key)].insert(datum)
+                }
+            }
+        }
+        ht.data = new_data
+
+        ht.lock.Unlock()
+    }
 }
 
 /*
@@ -161,17 +241,17 @@ func (ht2 *BackgroundHashTable2) calcPotential() float64 {
     return potential
 }
 
-func cleanup(ht2 *BackgroundHashTable2) {
+/*
+    Reduces the potential
+*/
+func (ht2 *BackgroundHashTable2) cleanup() {
     for {
-        changed := <-ht2.changed
-        if !changed {
+        if !<-ht2.changed {
             return
         }
-
         for ; ht2.calcPotential() > 19.143 + 0.104 * float64(ht2.n); {
             ht2.lock.Lock()
             fmt.Println("rebalancing second level")
-            fmt.Println(ht2.a, ht2.p, ht2.m, ht2.n, ht2.calcPotential())
 
             ht2.p = getPrime(u, 2*u)
             ht2.a = rand.Intn(ht2.p)

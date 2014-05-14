@@ -13,7 +13,7 @@ var (
 
 func main() {
 
-    bht := makeBackgroundHashTable(1024)
+    sht := makeSimpleHashTable(16)
 
     file, _ := os.Open("tests/simple.csv")
     csvReader := csv.NewReader(file)
@@ -27,7 +27,7 @@ func main() {
         if i % 10000 == 0 {
             fmt.Println(i)
         }
-        bht.insert(int(key), val)
+        sht.insert(int(key), val)
     }
 
 }

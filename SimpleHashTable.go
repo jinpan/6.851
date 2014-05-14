@@ -142,25 +142,12 @@ func (ht2 *SimpleHashTable2) del(key int) *string {
 }
 
 /*
-    Compute the potential
-*/
-func (ht2 SimpleHashTable2) calcPotential() float64 {
-    potential := 0.0
-    expected_length := float64(ht2.n) / float64(ht2.m)
-    cutoff := expected_length + 1.0
-    for _, datum := range ht2.data {
-        if float64(datum.Len()) > cutoff {
-            potential += float64(datum.Len()) - cutoff
-        }
-    }
-    return potential
-}
-
-/*
     Doubles the size of the hash table
 */
 func (ht *SimpleHashTable) double() {
     if ht.n > ht.m * ht.m {
+        fmt.Println("doubling")
+
         ht.m *= 2
         new_data := make([]*SimpleHashTable2, ht.m)
         for i := 0; i < ht.m; i++ {
@@ -177,7 +164,7 @@ func (ht *SimpleHashTable) double() {
             }
         }
 
-        for i := 0; i < ht.m; i++ {
+        for i := 0; i < ht.m/2; i++ {  // /2 because old m
             for j := 0; j < ht.data[i].m; j++ {
                 llist := ht.data[i].data[j]
                 for e := llist.Front(); e != nil; e = e.Next() {
@@ -191,12 +178,26 @@ func (ht *SimpleHashTable) double() {
 }
 
 /*
+    Compute the potential
+*/
+func (ht2 SimpleHashTable2) calcPotential() float64 {
+    potential := 0.0
+    expected_length := float64(ht2.n) / float64(ht2.m)
+    cutoff := expected_length + 1.0
+    for _, datum := range ht2.data {
+        if float64(datum.Len()) > cutoff {
+            potential += float64(datum.Len()) - cutoff
+        }
+    }
+    return potential
+}
+
+/*
     Considers rebalancing the hash table and rebalance if necessary
 */
 func (ht2 *SimpleHashTable2) rebalance() {
     for ; ht2.calcPotential() > 19.143 + 0.104 * float64(ht2.n); {
         fmt.Println("rebalancing second level")
-        fmt.Println(ht2.a, ht2.p, ht2.m, ht2.n, ht2.calcPotential())
 
         ht2.p = getPrime(u, 2*u)
         ht2.a = rand.Intn(ht2.p)
