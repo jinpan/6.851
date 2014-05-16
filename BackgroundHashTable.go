@@ -101,6 +101,14 @@ func (ht2 *BackgroundHashTable2) insert(datum Datum) {
 
     ht2.lock.Lock()
     llist := ht2.data[ht2.hash(key)]
+    for e := llist.Front(); e != nil; e = e.Next() {
+        if e.Value.(Datum).key == key {
+            datum := e.Value.(Datum)
+            datum.val = val
+            ht2.lock.Unlock()
+            return
+        }
+    }
     llist.PushBack(Datum{key: key, val: val})
 
     ht2.n++

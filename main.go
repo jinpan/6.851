@@ -13,17 +13,17 @@ var (
 
 func main() {
 
-    sht := makeSimpleHashTable(16)
+    sht := makeSimpleHashTable(16, true)
 
-    file, _ := os.Open("tests/simple.csv")
+    file, _ := os.Open("tests/insert.csv")
     csvReader := csv.NewReader(file)
     for i := 0; ; i++ {
         data, err := csvReader.Read()
         if err != nil {
             break
         }
-        key, _ := strconv.ParseInt(data[0], 10, 0)
-        val := data[1]
+        key, _ := strconv.ParseInt(data[1], 0, 0)
+        val := data[2]
         if i % 10000 == 0 {
             fmt.Println(i)
         }

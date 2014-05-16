@@ -11,6 +11,7 @@ type SimpleHashTable struct {
     p int  // prime number
     a int  // coefficient of the hash function
     m int  // primary table size
+    r bool  // whether we automatically rebalance
     data []*SimpleHashTable2  // array of secondary tables
 }
 
@@ -19,16 +20,18 @@ type SimpleHashTable2 struct {
     p int  // prime number
     a int  // coefficient of the hash function
     m int  // secondary table size
+    r bool  // whether we automatically rebalance
     data []*list.List  // actual data
 }
 
-func makeSimpleHashTable(m int) *SimpleHashTable {
+func makeSimpleHashTable(m int, rebalance bool) *SimpleHashTable {
     p := getPrime(u, 2*u)
     ht := SimpleHashTable {
         n: 0,
         p: p,
         a: rand.Intn(p),
         m: m,
+        r: rebalance,
         data: make([]*SimpleHashTable2, m),
     }
 
@@ -39,6 +42,7 @@ func makeSimpleHashTable(m int) *SimpleHashTable {
             p: p,
             a: rand.Intn(p),
             m: m,
+            r: rebalance,
             data: make([]*list.List, m),
         }
 
@@ -70,24 +74,35 @@ func (ht2 *SimpleHashTable2) hash(key int) int {
 func (ht *SimpleHashTable) insert(key int, val string) {
     datum := Datum{key: key, val: val}
 
-    ht.data[ht.hash(key)].insert(datum)
-    ht.double()
-    ht.n++
+    if (ht.data[ht.hash(key)].insert(datum)) {
+        ht.double()
+        ht.n++
+    }
 }
 
 /*
     Inserts the key/val pair into the hash table.  Gets the appropriate bucket
     and inserts the k/v pair into the bucket as a Datum object
 */
-func (ht2 *SimpleHashTable2) insert(datum Datum) {
+func (ht2 *SimpleHashTable2) insert(datum Datum) bool {
     key := datum.key
     val := datum.val
 
     llist := ht2.data[ht2.hash(key)]
+    for e := llist.Front(); e != nil; e = e.Next() {
+        if e.Value.(Datum).key == key {
+            datum := e.Value.(Datum)
+            datum.val = val
+            return false
+        }
+    }
     llist.PushBack(Datum{key: key, val: val})
     ht2.n++
 
-    ht2.rebalance()
+    if ht2.r {
+        ht2.rebalance()
+    }
+    return true
 }
 
 /*
@@ -134,7 +149,9 @@ func (ht2 *SimpleHashTable2) del(key int) *string {
             result := llist.Remove(e).(Datum).val
             ht2.n--
 
-            ht2.rebalance()
+            if ht2.r {
+                ht2.rebalance()
+            }
             return &result
         }
     }
@@ -157,6 +174,7 @@ func (ht *SimpleHashTable) double() {
                 p: p,
                 a: rand.Intn(p),
                 m: ht.m,
+                r: ht.r,
                 data: make([]*list.List, ht.m),
             }
             for j := 0; j < ht.m; j++ {

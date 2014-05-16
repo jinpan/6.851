@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 TABLE_SIZE = 1024
+UNIVERSE_SIZE = 32000000
 
 def compute_potential(data, n):
     expected_collisions = n / float(TABLE_SIZE)
@@ -22,13 +23,20 @@ def compute_potential(data, n):
     return potential
 
 
-def get_potential(alpha):
+def get_potential(alpha, unique_inserts=True):
 
     num_elements = int(alpha * TABLE_SIZE)
     counts = [0] * TABLE_SIZE
 
+    keys = set()
     for _ in xrange(num_elements):
-        counts[randint(0, TABLE_SIZE-1)] += 1
+        if unique_inserts:
+            counts[randint(0, TABLE_SIZE-1)] += 1
+        else:
+            key = randint(0, UNIVERSE_SIZE / TABLE_SIZE)
+            if key not in keys:
+                counts[randint(0, TABLE_SIZE-1)] += 1
+                keys.add(key)
     return compute_potential(counts, num_elements)
 
 
@@ -47,7 +55,10 @@ if __name__ == '__main__':
         moments[3].append(moment(potentials, 4))
 
     plt.figure()
-    plt.plot(moments[0])
+    plt.xlabel('Load Factor')
+    plt.ylabel('Potential')
+    plt.title('Potential as a function of Load Factor')
+    plt.plot(alphas, moments[0])
     plt.savefig('mean_100_50.png')
 
     plt.figure()
