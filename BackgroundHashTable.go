@@ -2,7 +2,6 @@ package main
 
 import (
     "container/list"
-    "fmt"
     "math/rand"
     "sync"
 )
@@ -12,8 +11,6 @@ type BackgroundHashTable struct {
     p int  // prime number
     a int  // coefficient of the hash function
     m int  // primary table size
-    changed chan bool  // changed boolean
-    lock sync.Mutex  // lock
     data []*BackgroundHashTable2  // array of secondary tables
 }
 
@@ -34,8 +31,6 @@ func makeBackgroundHashTable(m int) *BackgroundHashTable {
         p: p,
         a: rand.Intn(p),
         m: m,
-        changed: make(chan bool, 10),
-        lock: sync.Mutex{},
         data : make([]*BackgroundHashTable2, m),
     }
 
@@ -56,7 +51,6 @@ func makeBackgroundHashTable(m int) *BackgroundHashTable {
         }
         go ht.data[i].cleanup()
     }
-    go ht.cleanup()
     return &ht
 }
 
@@ -81,14 +75,9 @@ func (ht2 *BackgroundHashTable2) hash(key int) int {
 func (ht *BackgroundHashTable) insert(key int, val string) {
     datum := Datum{key: key, val: val}
 
-    ht.lock.Lock()
-
     ht.data[ht.hash(key)].insert(datum)
     ht.n++
-
-    ht.lock.Unlock()
-
-    ht.changed <- true
+    ht.double()
 }
 
 /*
@@ -122,12 +111,9 @@ func (ht2 *BackgroundHashTable2) insert(datum Datum) {
 */
 func (ht *BackgroundHashTable) get(key int) *string {
 
-    ht.lock.Lock()
-
     bucket := ht.data[(key * ht.p) % ht.m]
     result := bucket.get(key)
 
-    ht.lock.Unlock()
     return result
 }
 
@@ -152,7 +138,6 @@ func (ht2 *BackgroundHashTable2) get(key int) *string {
     Deletes the pointer to the value matching the key from the hash table.
 */
 func (ht *BackgroundHashTable) del(key int) *string {
-    ht.lock.Lock()
 
     bucket := ht.data[(key * ht.p) % ht.m]
     result := bucket.del(key)
@@ -160,8 +145,6 @@ func (ht *BackgroundHashTable) del(key int) *string {
         ht.n--
     }
 
-    ht.lock.Unlock()
-    ht.changed <- true
     return result
 }
 
@@ -186,67 +169,42 @@ func (ht2 *BackgroundHashTable2) del(key int) *string {
 }
 
 
-func (ht *BackgroundHashTable) cleanup() {
-    for {
-        if !<-ht.changed {
-            return
-        }
-        if ht.n <= ht.m * ht.m {
-            continue
-        }
+func (ht *BackgroundHashTable) double() {
+    if ht.n > ht.m * ht.m {
 
-        fmt.Println("doubling")
-
-        new_m := 2 * ht.m
-        new_data := make([]*BackgroundHashTable2, new_m)
-        for i := 0; i < new_m; i++ {
+        ht.m *= 2
+        new_data := make([]*BackgroundHashTable2, ht.m)
+        for i := 0; i < ht.m; i++ {
             p := getPrime(u, 2*u)
             new_data[i] = &BackgroundHashTable2{
                 n: 0,
                 p: p,
                 a: rand.Intn(p),
-                m: new_m,
+                m: ht.m,
                 changed: make(chan bool, 10),
                 lock: sync.Mutex{},
-                data: make([]*list.List, new_m),
+                data: make([]*list.List, ht.m),
             }
-            for j := 0; j < new_m; j++ {
+            for j := 0; j < ht.m; j++ {
                 new_data[i].data[j] = list.New()
             }
             go new_data[i].cleanup()
         }
 
-        ht.lock.Lock()
-        ht.m = new_m
         for i := 0; i < ht.m/2; i++ {  // /2 because old m
             ht.data[i].changed <- false
             for j := 0; j < ht.data[i].m; j++ {
+                ht.data[i].lock.Lock()
                 llist := ht.data[i].data[j]
                 for e := llist.Front(); e != nil; e = e.Next() {
                     datum := e.Value.(Datum)
                     new_data[ht.hash(datum.key)].insert(datum)
                 }
+                ht.data[i].lock.Unlock()
             }
         }
         ht.data = new_data
-
-        ht.lock.Unlock()
     }
-}
-
-/*
-    Compute the potential
-*/
-func (ht2 *BackgroundHashTable2) calcPotential() float64 {
-    potential := 0.0
-    expected_length := float64(ht2.n) / float64(ht2.m)
-    cutoff := expected_length + 1.0
-    for _, datum := range ht2.data {
-        if float64(datum.Len()) > cutoff {
-            potential += float64(datum.Len()) - cutoff
-        }
-    }
-    return potential
 }
 
 /*
@@ -257,12 +215,14 @@ func (ht2 *BackgroundHashTable2) cleanup() {
         if !<-ht2.changed {
             return
         }
-        for ; ht2.calcPotential() > 19.143 + 0.104 * float64(ht2.n); {
-            ht2.lock.Lock()
-            fmt.Println("rebalancing second level")
+        for {
+            potential := calcPotential(ht2.data, ht2.n, ht2.m)
+            if potential < 19.143 + 0.104 * float64(ht2.n) {
+                break
+            }
 
-            ht2.p = getPrime(u, 2*u)
-            ht2.a = rand.Intn(ht2.p)
+            p := getPrime(u, 2*u)
+            a := rand.Intn(p)
             data := make([]*list.List, ht2.m)
             for j := 0; j < ht2.m; j++ {
                 data[j] = list.New()
@@ -270,11 +230,41 @@ func (ht2 *BackgroundHashTable2) cleanup() {
             for j := 0; j < ht2.m; j++ {
                 for e := ht2.data[j].Front(); e != nil; e = e.Next() {
                     datum := e.Value.(Datum)
-                    data[ht2.hash(datum.key)].PushBack(datum)
+                    data[((a * datum.key) % p) % ht2.m].PushBack(datum)
                 }
             }
-            ht2.data = data
-            ht2.lock.Unlock()
+            new_potential := calcPotential(data, ht2.n, ht2.m)
+            if new_potential > 19.143 + 0.104 * float64(ht2.n) {
+                select {
+                case cont := <-ht2.changed: {
+                    if cont {
+                        continue
+                    } else {
+                        return
+                    }
+                }
+                default: {
+                    continue
+                }
+                }
+            } else {
+                select {
+                case cont := <-ht2.changed: {
+                    if cont {
+                        continue
+                    } else {
+                        return
+                    }
+                }
+                default: {
+                    ht2.lock.Lock()
+                    ht2.p = p
+                    ht2.a = a
+                    ht2.data = data
+                    ht2.lock.Unlock()
+                }
+                }
+            }
         }
     }
 }

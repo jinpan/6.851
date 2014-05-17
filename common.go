@@ -1,14 +1,31 @@
 package main
 
 import (
+    "container/list"
     "math"
     "math/rand"
+    "time"
 )
 
 type Datum struct {
     key int
     val string
 }
+
+func Extend(slice []time.Duration, element time.Duration) []time.Duration {
+    n := len(slice)
+    if n == cap(slice) {
+        // Slice is full; must grow.
+        // We double its size and add 1, so if the size is zero we still grow.
+        newSlice := make([]time.Duration, len(slice), 2*len(slice)+1)
+        copy(newSlice, slice)
+        slice = newSlice
+    }
+    slice = slice[0 : n+1]
+    slice[n] = element
+    return slice
+}
+
 
 /*
     Simple primality checking function.  Checks to see if any of the integers
@@ -39,25 +56,24 @@ func getPrime(lower int, upper int) int {
     return getPrime(lower, upper)
 }
 
+
 /*
-    Returns whether a and b are relatively prime.  Assumes a < b
+    Compute the potential.
+    Locking may severely degrade performance and is avoided. Consequently,
+    this his may not be exact because of race conditions, but should be
+    numerically stable enough for race conditions to not be a huge deal.
 */
-func isRPrime(a, b int) bool {
-    if a == 0 {
-        return false
-    }
-    if a == 1 {
-        return true
-    }
-    return isRPrime(b%a, a)
-}
 
-
-func getRPrime(n int) int {
-    for {
-        guess := int(rand.Intn(int(n)-3) + 2)
-        if isRPrime(guess, n) {
-            return guess
+func calcPotential(data []*list.List, n int, m int) float64 {
+    potential := 0.0
+    expected_length := float64(n) / float64(m)
+    cutoff := expected_length + 1.0
+    for _, datum := range data {
+        if float64(datum.Len()) > cutoff {
+            potential += float64(datum.Len()) - cutoff
         }
     }
+
+    return potential
 }
+

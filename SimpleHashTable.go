@@ -2,7 +2,6 @@ package main
 
 import (
     "container/list"
-    "fmt"
     "math/rand"
 )
 
@@ -75,8 +74,8 @@ func (ht *SimpleHashTable) insert(key int, val string) {
     datum := Datum{key: key, val: val}
 
     if (ht.data[ht.hash(key)].insert(datum)) {
-        ht.double()
         ht.n++
+        ht.double()
     }
 }
 
@@ -163,7 +162,6 @@ func (ht2 *SimpleHashTable2) del(key int) *string {
 */
 func (ht *SimpleHashTable) double() {
     if ht.n > ht.m * ht.m {
-        fmt.Println("doubling")
 
         ht.m *= 2
         new_data := make([]*SimpleHashTable2, ht.m)
@@ -215,7 +213,6 @@ func (ht2 SimpleHashTable2) calcPotential() float64 {
 */
 func (ht2 *SimpleHashTable2) rebalance() {
     for ; ht2.calcPotential() > 19.143 + 0.104 * float64(ht2.n); {
-        fmt.Println("rebalancing second level")
 
         ht2.p = getPrime(u, 2*u)
         ht2.a = rand.Intn(ht2.p)
